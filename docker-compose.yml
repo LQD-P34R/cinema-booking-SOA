@@ -1,0 +1,181 @@
+# Chạy cả hệ thống bằng một lệnh, đứng ở thư mục gốc repo:
+#   docker compose up --build
+# Dừng:                 docker compose down
+# Dừng và xóa dữ liệu:  docker compose down -v
+#
+# Yêu cầu: mỗi service có sẵn Dockerfile trong thư mục của mình (services/<tên>/Dockerfile).
+# Mỗi service có database MySQL RIÊNG (đúng nguyên tắc SOA: không dùng chung database).
+
+# ---------- Biến môi trường dùng chung cho các service Spring Boot ----------
+x-common-env: &common-env
+  DB_PORT: "3306"
+  DB_USERNAME: root
+  DB_PASSWORD: root
+  # PHẢI giống nhau ở Gateway và User Service. Muốn đổi: đặt biến JWT_SECRET trong file .env
+  JWT_SECRET: ${JWT_SECRET:-cinema-booking-soa-secret-key-change-me-0123456789}
+  # Container mặc định chạy giờ UTC, ép về giờ Việt Nam để suất chiếu và hạn giữ ghế đúng giờ
+  JAVA_TOOL_OPTIONS: "-Duser.timezone=Asia/Ho_Chi_Minh"
+
+# ---------- Cấu hình chung cho 4 container MySQL ----------
+x-mysql: &mysql
+  image: mysql:8.0
+  restart: unless-stopped
+  command:
+    - --character-set-server=utf8mb4
+    - --collation-server=utf8mb4_unicode_ci
+    - --performance-schema=OFF      # giảm bộ nhớ, đủ dùng cho đồ án
+  healthcheck:
+    test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"]
+    interval: 5s
+    timeout: 5s
+    retries: 20
+    start_period: 20s
+
+services:
+  # ======================= DATABASE =======================
+  # Cổng bên ngoài là 3307-3310 để KHÔNG đụng MySQL cài sẵn trên máy (3306).
+  mysql-user:
+    <<: *mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: cinema_user_db
+      TZ: Asia/Ho_Chi_Minh
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql-user-data:/var/lib/mysql
+
+  mysql-movie:
+    <<: *mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: cinema_movie_db
+      TZ: Asia/Ho_Chi_Minh
+    ports:
+      - "3308:3306"
+    volumes:
+      - mysql-movie-data:/var/lib/mysql
+
+  mysql-booking:
+    <<: *mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: cinema_booking_db
+      TZ: Asia/Ho_Chi_Minh
+    ports:
+      - "3309:3306"
+    volumes:
+      - mysql-booking-data:/var/lib/mysql
+
+  mysql-payment:
+    <<: *mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: cinema_payment_db
+      TZ: Asia/Ho_Chi_Minh
+    ports:
+      - "3310:3306"
+    volumes:
+      - mysql-payment-data:/var/lib/mysql
+
+  # ======================= SERVICE =======================
+  # Các port 8081-8084 mở ra ngoài để test riêng từng service bằng Postman.
+  # Khi nộp bài có thể xóa các dòng "ports" này, chỉ cho phép đi qua Gateway (8080).
+
+  # TV1
+  user-service:
+    build: ./services/user-service
+    restart: on-failure
+    environment:
+      <<: *common-env
+      DB_HOST: mysql-user
+    ports:
+      - "8081:8081"
+    depends_on:
+      mysql-user:
+        condition: service_healthy
+
+  # Bạn (TV2)
+  movie-service:
+    build: ./services/movie-service
+    restart: on-failure
+    environment:
+      <<: *common-env
+      DB_HOST: mysql-movie
+      CINEMA_SEED_ENABLED: "true"    # tự nạp dữ liệu mẫu ở lần chạy đầu tiên
+    ports:
+      - "8082:8082"
+    depends_on:
+      mysql-movie:
+        condition: service_healthy
+
+  # TV3
+  booking-service:
+    build: ./services/booking-service
+    restart: on-failure
+    environment:
+      <<: *common-env
+      DB_HOST: mysql-booking
+      MOVIE_SERVICE_URL: http://movie-service:8082
+      PAYMENT_SERVICE_URL: http://payment-service:8084
+    ports:
+      - "8083:8083"
+    depends_on:
+      mysql-booking:
+        condition: service_healthy
+      movie-service:
+        condition: service_started
+      payment-service:
+        condition: service_started
+
+  # TV4
+  payment-service:
+    build: ./services/payment-service
+    restart: on-failure
+    environment:
+      <<: *common-env
+      DB_HOST: mysql-payment
+      BOOKING_SERVICE_URL: http://booking-service:8083
+    ports:
+      - "8084:8084"
+    depends_on:
+      mysql-payment:
+        condition: service_healthy
+
+  # ======================= GATEWAY + FRONTEND =======================
+  api-gateway:
+    build: ./api-gateway
+    restart: on-failure
+    environment:
+      JWT_SECRET: ${JWT_SECRET:-cinema-booking-soa-secret-key-change-me-0123456789}
+      JAVA_TOOL_OPTIONS: "-Duser.timezone=Asia/Ho_Chi_Minh"
+      USER_SERVICE_URL: http://user-service:8081
+      MOVIE_SERVICE_URL: http://movie-service:8082
+      BOOKING_SERVICE_URL: http://booking-service:8083
+      PAYMENT_SERVICE_URL: http://payment-service:8084
+    ports:
+      - "8080:8080"
+    depends_on:
+      - user-service
+      - movie-service
+      - booking-service
+      - payment-service
+
+  # VITE_API_URL là địa chỉ Gateway mà TRÌNH DUYỆT dùng (nên là localhost, không phải tên service Docker).
+  # Giá trị này được ghi vào file JS lúc build, đổi xong phải chạy lại: docker compose up --build
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: http://localhost:8080
+    restart: on-failure
+    ports:
+      - "3000:80"
+    depends_on:
+      - api-gateway
+
+volumes:
+  mysql-user-data:
+  mysql-movie-data:
+  mysql-booking-data:
+  mysql-payment-data:
