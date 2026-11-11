@@ -1,0 +1,44 @@
+server:
+  port: 8082
+
+spring:
+  application:
+    name: movie-service
+
+  datasource:
+    # Chạy local: localhost. Chạy Docker Compose: DB_HOST=mysql-movie (đặt trong docker-compose.yml)
+    url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/cinema_movie_db?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Ho_Chi_Minh&characterEncoding=UTF-8
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:root}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.MySQLDialect
+        jdbc:
+          time_zone: Asia/Ho_Chi_Minh
+    show-sql: false
+
+  jackson:
+    # Trả thời gian dạng ISO-8601 (2026-11-20T19:30:00) thay vì timestamp số
+    serialization:
+      write-dates-as-timestamps: false
+    time-zone: Asia/Ho_Chi_Minh
+    default-property-inclusion: always
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+
+# Cấu hình nghiệp vụ theo api-contract.md
+cinema:
+  showtime:
+    cleaning-minutes: 15      # thời gian dọn phòng cộng thêm vào endTime
+  seat-price:
+    vip-multiplier: 1.3
+    couple-multiplier: 2.0
+    round-to: 1000            # làm tròn xuống đến hàng nghìn

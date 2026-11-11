@@ -1,0 +1,37 @@
+server:
+  port: 8083
+
+spring:
+  application:
+    name: booking-service
+  datasource:
+    url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/cinema_booking_db?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Ho_Chi_Minh&characterEncoding=UTF-8
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:root}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update # de demo va dong bo cot moi; khi trien khai on dinh dung validate + migration
+    open-in-view: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.MySQLDialect
+        jdbc:
+          time_zone: Asia/Ho_Chi_Minh
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+    time-zone: Asia/Ho_Chi_Minh
+    default-property-inclusion: always
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+
+cinema:
+  movie-service-url: ${MOVIE_SERVICE_URL:http://localhost:8082}
+  payment-service-url: ${PAYMENT_SERVICE_URL:http://localhost:8084}
+  booking:
+    hold-minutes: 5
+    payment-lease-seconds: 30
+    expiration-scan-ms: 30000
