@@ -1,0 +1,42 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: user-service
+
+  datasource:
+    # Chạy local: localhost. Chạy Docker Compose: DB_HOST=mysql-user (đặt trong docker-compose.yml)
+    url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/cinema_user_db?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Ho_Chi_Minh&characterEncoding=UTF-8
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:root}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.MySQLDialect
+        jdbc:
+          time_zone: Asia/Ho_Chi_Minh
+    show-sql: false
+
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+    time-zone: Asia/Ho_Chi_Minh
+
+# Khóa ký JWT: PHẢI giống hệt Gateway (dùng nguyên chuỗi UTF-8, không giải mã Base64)
+jwt:
+  secret: ${JWT_SECRET:cinema-booking-soa-secret-key-change-me-0123456789}
+  expiration-hours: 24
+
+# Tài khoản ADMIN mẫu, tự tạo khi khởi động nếu chưa có (theo api-contract.md)
+cinema:
+  admin:
+    email: admin@cinema.com
+    password: admin123
+    full-name: Administrator
+    phone: "0900000000"
