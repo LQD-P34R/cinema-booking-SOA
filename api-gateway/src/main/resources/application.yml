@@ -1,0 +1,84 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: api-gateway
+
+  cloud:
+    gateway:
+      # Địa chỉ các service lấy từ biến môi trường.
+      # Chạy local: mặc định localhost. Chạy Docker Compose: docker-compose.yml sẽ ghi đè
+      # bằng tên service (ví dụ http://movie-service:8082).
+      routes:
+        # 1. Đăng ký, đăng nhập (công khai)
+        - id: auth-route
+          uri: ${USER_SERVICE_URL:http://localhost:8081}
+          order: 1
+          predicates:
+            - Path=/api/auth/**
+
+        # 2. Thông tin người dùng (cần JWT)
+        - id: user-route
+          uri: ${USER_SERVICE_URL:http://localhost:8081}
+          order: 2
+          predicates:
+            - Path=/api/users/**
+
+        # 3. Trạng thái ghế do Booking Service quản lý.
+        # PHẢI đứng trước route 4, nếu không /api/showtimes/** sẽ nuốt mất đường dẫn này.
+        - id: seat-status-route
+          uri: ${BOOKING_SERVICE_URL:http://localhost:8083}
+          order: 3
+          predicates:
+            - Path=/api/showtimes/*/seat-status
+
+        # 4. Phim, rạp, phòng, suất chiếu, sơ đồ ghế (GET công khai, ghi cần ADMIN)
+        - id: movie-route
+          uri: ${MOVIE_SERVICE_URL:http://localhost:8082}
+          order: 4
+          predicates:
+            - Path=/api/movies/**,/api/cinemas/**,/api/rooms/**,/api/showtimes/**
+
+        # 5. Đặt vé và thanh toán (cần JWT)
+        - id: booking-route
+          uri: ${BOOKING_SERVICE_URL:http://localhost:8083}
+          order: 5
+          predicates:
+            - Path=/api/bookings/**
+
+        # 6. Giao dịch thanh toán (cần JWT, ADMIN xem toàn bộ)
+        - id: payment-route
+          uri: ${PAYMENT_SERVICE_URL:http://localhost:8084}
+          order: 6
+          predicates:
+            - Path=/api/payments/**
+
+        # Đường dẫn /internal/** không có route nào khớp, nên Gateway tự trả 404.
+        # Nhờ vậy các API nội bộ (ví dụ Booking gọi Payment) không bao giờ lộ ra ngoài.
+
+      # CORS: cho phép Frontend (React, cổng 3000) gọi vào Gateway từ trình duyệt
+      globalcors:
+        cors-configurations:
+          '[/**]':
+            allowedOrigins:
+              - "http://localhost:3000"
+              - "http://127.0.0.1:3000"
+            allowedMethods:
+              - GET
+              - POST
+              - PUT
+              - DELETE
+              - OPTIONS
+            allowedHeaders: "*"
+            maxAge: 3600
+
+# Khóa ký JWT. PHẢI GIỐNG HỆT giá trị mà User Service (TV1) dùng để ký token,
+# nếu khác thì mọi token sẽ bị Gateway từ chối. Tối thiểu 32 ký tự (HS256).
+# Chạy thật nên đặt bằng biến môi trường JWT_SECRET, không để mặc định.
+jwt:
+  secret: ${JWT_SECRET:cinema-booking-soa-secret-key-change-me-0123456789}
+
+logging:
+  level:
+    org.springframework.cloud.gateway: INFO
